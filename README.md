@@ -1,6 +1,6 @@
 # Sonoff_Homekit
 
-A simple project that allows for a fan to be controlled by an ESP8285 unit.
+A project that you load in the Arduino IDE and load onto a ESP8285/ESP32 Sonoff R2 and it allows you to control it natively.
 
 Go back to [Will's Homekit stuff](https://github.com/Frostist/Wills-Homekit-Stuff)
 
