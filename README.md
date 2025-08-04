@@ -1,6 +1,6 @@
-# Sonoff_ESP8266_Homekit
+# Sonoff_Homekit
 
-A simple project that allows for a fan to be controlled by an ESP8266 unit.
+A simple project that allows for a fan to be controlled by an ESP8285 unit.
 
 Go back to [Will's Homekit stuff](https://github.com/Frostist/Wills-Homekit-Stuff)
 
