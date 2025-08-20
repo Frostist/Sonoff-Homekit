@@ -15,9 +15,9 @@
 #define ESP8285_V1_3 true
 
 // Increased EEPROM size to accommodate HomeKit pairing data
-#define EEPROM_SIZE 512
+#define EEPROM_SIZE 4096
 // Move switch state storage to avoid conflicts with HomeKit library
-#define SWITCH_STATE_ADDRESS 450
+#define SWITCH_STATE_ADDRESS 1409
 #define LOG_D(fmt, ...) printf_P(PSTR(fmt "\n"), ##__VA_ARGS__);
 
 // Button debouncing variables
