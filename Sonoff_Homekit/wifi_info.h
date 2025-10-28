@@ -73,12 +73,13 @@ void wifi_connect() {
 // Function to check and maintain WiFi connection
 // CRITICAL: Only check periodically (every 5 seconds), not every loop iteration
 // This prevents excessive WiFi library calls and potential watchdog resets
-void wifi_check_and_reconnect() {
+// RETURNS: true if WiFi just reconnected, false otherwise
+bool wifi_check_and_reconnect() {
 	unsigned long currentTime = millis();
 	
 	// Only check WiFi status every 5 seconds, not every loop iteration
 	if ((currentTime - lastWifiCheck) < WIFI_CHECK_INTERVAL) {
-		return;
+		return false;  // No reconnection occurred
 	}
 	
 	lastWifiCheck = currentTime;
@@ -142,14 +143,20 @@ void wifi_check_and_reconnect() {
 			Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
 			Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
 			Serial.printf("Channel: %d\n", WiFi.channel());
+			
+			return true;  // WiFi just reconnected!
 		} else {
 			wifiConnected = false;
 			digitalWrite(13, HIGH); // Turn off LED
 			
 			Serial.println("WiFi reconnection failed");
 			Serial.println("Will retry in 60 seconds");
+			
+			return false;  // Reconnection failed
 		}
 	}
+	
+	return false;  // No state change
 }
 
 // Function to get current WiFi connection status

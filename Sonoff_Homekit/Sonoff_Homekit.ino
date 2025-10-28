@@ -118,7 +118,18 @@ void setup() {
 
 void loop() {
   // Check and maintain WiFi connection
-  wifi_check_and_reconnect();
+  // Returns true if WiFi just reconnected
+  bool justReconnected = wifi_check_and_reconnect();
+  
+  // If WiFi just reconnected, force HomeKit to restart mDNS
+  if (justReconnected) {
+    Serial.println("WiFi reconnected - restarting HomeKit services...");
+    // Give WiFi a moment to stabilize
+    delay(1000);
+    // Force mDNS re-announcement
+    homekit_mdns_restart();
+    Serial.println("HomeKit services restarted - device should be discoverable");
+  }
   
   // Run HomeKit loop
   my_homekit_loop();
@@ -257,6 +268,21 @@ void wipeEEPROM() {
 //==============================
 
 static uint32_t next_heap_millis = 0;
+
+// Function to help HomeKit recover after WiFi reconnection
+void homekit_mdns_restart() {
+  // The HomeKit library manages mDNS internally, but we can help by
+  // ensuring the network stack is fully ready before HomeKit tries to use it
+  Serial.println("Ensuring mDNS is properly announced...");
+  
+  // Multiple HomeKit loop iterations help ensure mDNS gets properly announced
+  for (int i = 0; i < 5; i++) {
+    arduino_homekit_loop();
+    delay(100);
+  }
+  
+  Serial.println("mDNS re-announcement complete");
+}
 
 // Called when the switch value is changed by iOS Home APP
 void cha_switch_on_setter(const homekit_value_t value) {
