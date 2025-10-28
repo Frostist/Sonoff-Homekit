@@ -4,10 +4,16 @@ A project that you use the Arduino IDE and load onto a ESP8285/ESP32 Sonoff R2 a
 
 Go back to [Will's Homekit stuff](https://github.com/Frostist/Wills-Homekit-Stuff)
 
-## I am still playing around with a lot of the WiFi & EEPROM code, due to the fact that i have encoutered many issues.
+### Issue I have encoutered with the Library and have fixed in my own code.
 - Frequent lights toggling randomly
 - If WiFi router reboots, lights disconnect and don't reconnect until rebooted
 - Talk to each other and seem to toggle each other on and off
+
+## What is different in this codebase
+As sadi above I have encoutered many issues with the native Homekit library branch, and this code base tries to fix many of those issues with the following:
+- The unit will reboot if no HomeKit Clients are found after 2 minutes
+- EEPROM storage for lights on/off are in a different location
+- WiFi Disconnect / Reconnect if router switches off
 
 ## Notes
 - Pin 2 controls a relay that allows for the fan to change states from on to off
@@ -44,3 +50,5 @@ If you experience inverted switch behavior (ON becomes OFF and vice versa) betwe
 2. **For ESP8285 v1.3 units**: Set `#define ESP8285_V1_3 true` in the code
 
 The difference is due to hardware changes in relay wiring or GPIO pin behavior between versions. The code now includes conditional compilation to handle both hardware versions.
+
+#### You might have to toggle this to true / false in order to find what works for you.
