@@ -21,8 +21,19 @@ Go back to [Will's Homekit stuff](https://github.com/Frostist/Wills-Homekit-Stuf
 5. You might also need [ESP HomeKit Library](https://github.com/maximkulkin/esp-homekit) / [ESP Serial Library](https://github.com/plerup/espsoftwareserial/)
 6. Download this file and then open the .ino file with Ardunio
 
-
-
+## You need to edit the following!
+- You need to go into wifi_info.h and edit the wifi username and password:
+```
+const char *ssid = "WIFI SSID";
+const char *password = "WIFI Password";
+```
+- You NEED to edit the my_accessory.c file
+*You need to edit the 01 and increase this to 02, 03, 04, 05 etc for EACH switch, no two switches can have the same name.*
+```
+homekit_characteristic_t cha_name = HOMEKIT_CHARACTERISTIC_(NAME, "Homekit SW 01");
+HOMEKIT_CHARACTERISTIC(NAME, "Homekit SW 01"),
+HOMEKIT_CHARACTERISTIC(SERIAL_NUMBER, "Sonoff-Switch-01"),
+```
 
 ## Hardware Version Compatibility
 
