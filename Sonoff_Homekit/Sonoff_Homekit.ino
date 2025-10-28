@@ -17,7 +17,11 @@
 // Increased EEPROM size to accommodate HomeKit pairing data
 #define EEPROM_SIZE 4096
 // Move switch state storage to avoid conflicts with HomeKit library
+// HomeKit uses addresses 0-1408, so we use 1409 for switch state
 #define SWITCH_STATE_ADDRESS 1409
+// Magic number to detect if EEPROM has been initialized
+#define EEPROM_MAGIC_ADDRESS 1410
+#define EEPROM_MAGIC_VALUE 0xAB
 #define LOG_D(fmt, ...) printf_P(PSTR(fmt "\n"), ##__VA_ARGS__);
 
 // Button debouncing variables
@@ -31,23 +35,31 @@ unsigned long buttonHoldStart = 0;
 const unsigned long buttonHoldTime = 7000;  // 7 seconds
 bool buttonHeld = false;
 
+// Heap monitoring for debugging
+unsigned long lastHeapCheck = 0;
+const unsigned long heapCheckInterval = 10000;  // Check every 10 seconds
+
 // access your HomeKit characteristics defined in my_accessory.c
 extern "C" homekit_server_config_t config;
 extern "C" homekit_characteristic_t cha_switch_on;
 
 void setup() {
+  Serial.begin(115200);
+  Serial.println("\n\n=== Sonoff HomeKit Starting ===");
+  
   // Initialize EEPROM with larger size for HomeKit pairing data
+  // CRITICAL: Only call EEPROM.begin() ONCE to avoid multiple RAM allocations
   EEPROM.begin(EEPROM_SIZE);
+  Serial.println("EEPROM initialized");
   
   // Initialize LED pin for WiFi connection indicator
   pinMode(PIN_LED, OUTPUT);
-  // digitalWrite(PIN_LED, HIGH); // Start with LED off
+  digitalWrite(PIN_LED, HIGH); // Start with LED off (HIGH = off for this LED)
 
   // Initialize button pin with internal pull-up
   pinMode(PIN_BUTTON, INPUT_PULLUP);
 
-  //Connect to wifi
-  Serial.begin(115200);
+  // Connect to WiFi
   wifi_connect();
 
   // Start HomeKit setup first to ensure proper EEPROM initialization
@@ -55,37 +67,77 @@ void setup() {
   my_homekit_setup();
   Serial.println("HomeKit initialized successfully");
 
-  // Read switch state from EEPROM (moved to safer address)
-  bool switchOn = EEPROM.read(SWITCH_STATE_ADDRESS);
+  // Check if EEPROM has been initialized with our magic number
+  uint8_t magicValue = EEPROM.read(EEPROM_MAGIC_ADDRESS);
+  bool eepromInitialized = (magicValue == EEPROM_MAGIC_VALUE);
   
-  // Check if EEPROM is uninitialized (0x00) and default to OFF
-  if (switchOn == 0x00) {
+  bool switchOn = false;
+  
+  if (!eepromInitialized) {
+    // First boot - initialize EEPROM
+    Serial.println("First boot detected - initializing EEPROM");
     switchOn = false;  // Default to OFF
-    EEPROM.write(SWITCH_STATE_ADDRESS, false);
+    EEPROM.write(SWITCH_STATE_ADDRESS, 0x00);
+    EEPROM.write(EEPROM_MAGIC_ADDRESS, EEPROM_MAGIC_VALUE);
     EEPROM.commit();
+    Serial.println("EEPROM initialized to default state (OFF)");
+  } else {
+    // Read switch state from EEPROM
+    uint8_t storedState = EEPROM.read(SWITCH_STATE_ADDRESS);
+    
+    // Validate the stored state (should be 0x00 or 0x01)
+    if (storedState == 0x01) {
+      switchOn = true;
+    } else if (storedState == 0x00) {
+      switchOn = false;
+    } else {
+      // Corrupted value - default to OFF and fix it
+      Serial.printf("Warning: Corrupted EEPROM value: 0x%02X - resetting to OFF\n", storedState);
+      switchOn = false;
+      EEPROM.write(SWITCH_STATE_ADDRESS, 0x00);
+      EEPROM.commit();
+    }
   }
 
-//Print and change state
-#if ESP8285_V1_3
-  digitalWrite(PIN_SWITCH, switchOn ? HIGH : LOW);  // Inverted logic for v1.3
-#else
-  digitalWrite(PIN_SWITCH, switchOn ? LOW : HIGH);  // Normal logic for v1.0
-#endif
-  Serial.println("Switch on: ");
-  Serial.println(switchOn);
+  // Set physical relay state
+  #if ESP8285_V1_3
+    digitalWrite(PIN_SWITCH, switchOn ? HIGH : LOW);  // Inverted logic for v1.3
+  #else
+    digitalWrite(PIN_SWITCH, switchOn ? LOW : HIGH);  // Normal logic for v1.0
+  #endif
+  
+  Serial.printf("Switch initialized to: %s\n", switchOn ? "ON" : "OFF");
   
   // Synchronize HomeKit characteristic with EEPROM value
   cha_switch_on.value.bool_value = switchOn;
+  
+  // Report initial heap status
+  Serial.printf("Initial free heap: %d bytes\n", ESP.getFreeHeap());
+  Serial.println("=== Setup Complete ===\n");
 }
 
 void loop() {
   // Check and maintain WiFi connection
   wifi_check_and_reconnect();
   
+  // Run HomeKit loop
   my_homekit_loop();
 
   // Handle button press
   handleButtonPress();
+
+  // Periodic heap monitoring for debugging memory issues
+  if (millis() - lastHeapCheck >= heapCheckInterval) {
+    lastHeapCheck = millis();
+    uint32_t freeHeap = ESP.getFreeHeap();
+    Serial.printf("Free heap: %d bytes", freeHeap);
+    
+    // Warn if heap is getting dangerously low
+    if (freeHeap < 8000) {
+      Serial.print(" - WARNING: Low memory!");
+    }
+    Serial.println();
+  }
 
   delay(10);
 }
@@ -102,7 +154,7 @@ void handleButtonPress() {
       buttonPressed = true;
       buttonHoldStart = millis();
       buttonHeld = false;
-      Serial.println("Button pressed!");
+      Serial.println("Button pressed");
     }
 
     // Button was released
@@ -133,53 +185,70 @@ void toggleRelay() {
   bool currentState = cha_switch_on.value.bool_value;
   bool newState = !currentState;
 
+  Serial.printf("Toggle relay: %s -> %s\n", currentState ? "ON" : "OFF", newState ? "ON" : "OFF");
+
   // Update HomeKit characteristic
   cha_switch_on.value.bool_value = newState;
 
-// Update physical relay and LED
-#if ESP8285_V1_3
-  digitalWrite(PIN_SWITCH, newState ? HIGH : LOW);  // Inverted logic for v1.3
-#else
-  digitalWrite(PIN_SWITCH, newState ? LOW : HIGH);  // Normal logic for v1.0
-#endif
+  // Update physical relay
+  #if ESP8285_V1_3
+    digitalWrite(PIN_SWITCH, newState ? HIGH : LOW);  // Inverted logic for v1.3
+  #else
+    digitalWrite(PIN_SWITCH, newState ? LOW : HIGH);  // Normal logic for v1.0
+  #endif
 
-  // Save to EEPROM (using new address)
-  EEPROM.begin(EEPROM_SIZE);
-  EEPROM.write(SWITCH_STATE_ADDRESS, newState);
-  EEPROM.commit();
+  // Save to EEPROM - write explicit values for clarity
+  // CRITICAL: Do NOT call EEPROM.begin() again - it's already initialized in setup()
+  EEPROM.write(SWITCH_STATE_ADDRESS, newState ? 0x01 : 0x00);
+  if (EEPROM.commit()) {
+    Serial.println("State saved to EEPROM successfully");
+  } else {
+    Serial.println("ERROR: Failed to save state to EEPROM");
+  }
 
   // Notify HomeKit of the change
   homekit_characteristic_notify(&cha_switch_on, cha_switch_on.value);
-
-  Serial.print("Relay toggled to: ");
-  Serial.println(newState ? "ON" : "OFF");
 }
 
 // Wipe EEPROM memory for factory reset
 void wipeEEPROM() {
+  Serial.println("\n=== FACTORY RESET INITIATED ===");
   Serial.println("Button held for 7 seconds - performing factory reset...");
   
   // Flash LED rapidly to indicate factory reset
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 20; i++) {
     digitalWrite(PIN_LED, LOW);
     delay(100);
     digitalWrite(PIN_LED, HIGH);
     delay(100);
   }
   
-  // Wipe EEPROM with zeros (more reliable than 0xFF for HomeKit)
-  EEPROM.begin(EEPROM_SIZE);
-  for (int i = 0; i < EEPROM_SIZE; i++) {
-    EEPROM.write(i, 0x00);  // Use 0x00 instead of 0xFF
-  }
-  EEPROM.commit();
+  Serial.println("Wiping EEPROM...");
   
-  Serial.println("EEPROM wiped successfully!");
+  // Wipe EEPROM with zeros (more reliable than 0xFF for HomeKit)
+  for (int i = 0; i < EEPROM_SIZE; i++) {
+    EEPROM.write(i, 0x00);
+    
+    // Show progress every 512 bytes
+    if (i % 512 == 0 && i > 0) {
+      Serial.printf("Progress: %d/%d bytes\n", i, EEPROM_SIZE);
+    }
+  }
+  
+  if (EEPROM.commit()) {
+    Serial.println("EEPROM wiped successfully!");
+  } else {
+    Serial.println("ERROR: EEPROM commit failed!");
+  }
+  
   Serial.println("HomeKit pairing data cleared!");
+  Serial.println("WiFi settings cleared!");
   Serial.println("Device will restart in 5 seconds...");
   
   // Longer delay to ensure EEPROM is fully written
   delay(5000);
+  
+  Serial.println("Restarting now...");
   ESP.restart();
 }
 
@@ -189,25 +258,28 @@ void wipeEEPROM() {
 
 static uint32_t next_heap_millis = 0;
 
-//Called when the switch value is changed by iOS Home APP
+// Called when the switch value is changed by iOS Home APP
 void cha_switch_on_setter(const homekit_value_t value) {
   bool on = value.bool_value;
-  cha_switch_on.value.bool_value = on;  //sync the value
-  LOG_D("Switch: %s", on ? "ON" : "OFF");
-#if ESP8285_V1_3
-  digitalWrite(PIN_SWITCH, on ? HIGH : LOW);  // Inverted logic for v1.3
-#else
-  digitalWrite(PIN_SWITCH, on ? LOW : HIGH);        // Normal logic for v1.0
-#endif
+  cha_switch_on.value.bool_value = on;  // sync the value
+  
+  LOG_D("HomeKit command: Switch %s", on ? "ON" : "OFF");
+  
+  // Update physical relay
+  #if ESP8285_V1_3
+    digitalWrite(PIN_SWITCH, on ? HIGH : LOW);  // Inverted logic for v1.3
+  #else
+    digitalWrite(PIN_SWITCH, on ? LOW : HIGH);  // Normal logic for v1.0
+  #endif
 
-  //Write to Memory (using new address)
-  EEPROM.begin(EEPROM_SIZE);
-  EEPROM.write(SWITCH_STATE_ADDRESS, on);
-  EEPROM.commit();
-
-  //Print state
-  Serial.println("Write memory: ");
-  Serial.println(on);
+  // Save to EEPROM - write explicit values for clarity
+  // CRITICAL: Do NOT call EEPROM.begin() again - it's already initialized in setup()
+  EEPROM.write(SWITCH_STATE_ADDRESS, on ? 0x01 : 0x00);
+  if (EEPROM.commit()) {
+    Serial.printf("HomeKit state saved: %s\n", on ? "ON" : "OFF");
+  } else {
+    Serial.println("ERROR: Failed to save HomeKit state to EEPROM");
+  }
 }
 
 void my_homekit_setup() {
@@ -222,8 +294,8 @@ void my_homekit_loop() {
   arduino_homekit_loop();
   const uint32_t t = millis();
   if (t > next_heap_millis) {
-    // show heap info every 5 seconds
-    next_heap_millis = t + 5 * 1000;
+    // show heap info every 30 seconds (reduced from 5 to minimize serial spam)
+    next_heap_millis = t + 30 * 1000;
     LOG_D("Free heap: %d, HomeKit clients: %d",
           ESP.getFreeHeap(), arduino_homekit_connected_clients_count());
   }
