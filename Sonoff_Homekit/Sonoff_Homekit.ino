@@ -4,32 +4,29 @@
 #include "wifi_info.h"
 
 // Sonoff Basic GPIO pin definitions
-#define PIN_SWITCH 12  // Relay pin
-#define PIN_LED 13     // LED pin
-#define PIN_BUTTON 0   // Button pin
+#define PIN_SWITCH 12
+#define PIN_LED 13
+#define PIN_BUTTON 0
 
-// Hardware version configuration
+// Hardware version
 #define ESP8285_V1_3 true
 
-// EEPROM configuration
-// HomeKit library uses addresses 0-1408, we use 1409+ for switch state
+// EEPROM configuration - HomeKit uses 0-1408, we use 1409+
 #define SWITCH_STATE_ADDRESS 1409
 #define EEPROM_MAGIC_ADDRESS 1410
 #define EEPROM_MAGIC_VALUE 0xAB
 #define LOG_D(fmt, ...) printf_P(PSTR(fmt "\n"), ##__VA_ARGS__);
 
-// Button debouncing
+// Button variables
 unsigned long lastButtonPress = 0;
 const unsigned long buttonDebounceTime = 200;
 bool lastButtonState = HIGH;
 bool buttonPressed = false;
-
-// Button hold for factory reset
 unsigned long buttonHoldStart = 0;
 const unsigned long buttonHoldTime = 7000;
 bool buttonHeld = false;
 
-// Heap monitoring
+// Monitoring
 unsigned long lastHeapCheck = 0;
 const unsigned long heapCheckInterval = 10000;
 
@@ -39,17 +36,13 @@ unsigned long noClientStartTime = 0;
 const unsigned long NO_CLIENT_TIMEOUT = 120000;  // 2 minutes
 bool hadClientBefore = false;
 
-// Access HomeKit
+// HomeKit
 extern "C" homekit_server_config_t config;
 extern "C" homekit_characteristic_t cha_switch_on;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n\n=== Sonoff HomeKit v3.0 ===");
-  
-  // CRITICAL: Don't call EEPROM.begin() before HomeKit initialization!
-  // The HomeKit library calls EEPROM.begin() internally and manages addresses 0-1408
-  // If we call it first, we might reinitialize and clear HomeKit's pairing data
+  Serial.println("\n\n=== Sonoff HomeKit v3.1 ===");
   
   // Initialize pins
   pinMode(PIN_LED, OUTPUT);
@@ -57,15 +50,15 @@ void setup() {
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_SWITCH, OUTPUT);
 
-  // Connect to WiFi
+  // Connect WiFi
   wifi_connect();
 
-  // Initialize HomeKit FIRST - it will initialize EEPROM internally
+  // Initialize HomeKit FIRST - let it set up its EEPROM storage (0-1408)
   Serial.println("Initializing HomeKit...");
   my_homekit_setup();
   Serial.println("HomeKit initialized");
 
-  // Now we can safely read/write EEPROM for our switch state (1409+)
+  // Now restore our switch state from EEPROM (1409+)
   uint8_t magicValue = EEPROM.read(EEPROM_MAGIC_ADDRESS);
   bool eepromInitialized = (magicValue == EEPROM_MAGIC_VALUE);
   
@@ -91,7 +84,7 @@ void setup() {
     }
   }
 
-  // Set relay to restored state
+  // Set relay
   #if ESP8285_V1_3
     digitalWrite(PIN_SWITCH, switchOn ? HIGH : LOW);
   #else
@@ -102,25 +95,19 @@ void setup() {
   cha_switch_on.value.bool_value = switchOn;
   
   Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
-  Serial.println("=== Setup Complete ===\n");
+  Serial.println("=== Ready ===\n");
 }
 
 void loop() {
-  // WiFi maintenance
   wifi_check_and_reconnect();
-  
-  // HomeKit loop
   my_homekit_loop();
-
-  // Button handling
   handleButtonPress();
 
-  // AUTO-RECOVERY: Restart if no HomeKit clients for 2 minutes
+  // AUTO-RECOVERY: Restart if no clients for 2 minutes
   unsigned long currentTime = millis();
   
   if (currentTime - lastClientCheckTime >= 10000) {
     lastClientCheckTime = currentTime;
-    
     int clientCount = arduino_homekit_connected_clients_count();
     
     if (clientCount > 0) {
@@ -132,8 +119,7 @@ void loop() {
         noClientStartTime = currentTime;
       }
       else if (hadClientBefore && (currentTime - noClientStartTime >= NO_CLIENT_TIMEOUT)) {
-        Serial.println("\n⚠️  No HomeKit clients for 2 minutes - Restarting");
-        Serial.println("Restarting in 3 seconds...\n");
+        Serial.println("\n⚠️  No clients for 2 min - Restarting");
         delay(3000);
         ESP.restart();
       }
@@ -146,17 +132,14 @@ void loop() {
     uint32_t freeHeap = ESP.getFreeHeap();
     int clients = arduino_homekit_connected_clients_count();
     
-    Serial.printf("Heap: %d bytes, Clients: %d", freeHeap, clients);
+    Serial.printf("Heap: %d, Clients: %d", freeHeap, clients);
     
-    if (freeHeap < 8000) {
-      Serial.print(" ⚠️ LOW MEM");
-    }
+    if (freeHeap < 8000) Serial.print(" ⚠️ LOW");
     
-    // Show countdown if waiting for clients
     if (hadClientBefore && noClientStartTime > 0 && WiFi.isConnected()) {
-      unsigned long timeWithoutClients = (millis() - noClientStartTime) / 1000;
-      unsigned long timeUntilRestart = (NO_CLIENT_TIMEOUT / 1000) - timeWithoutClients;
-      Serial.printf(" | No clients: %lus (restart: %lus)", timeWithoutClients, timeUntilRestart);
+      unsigned long waited = (millis() - noClientStartTime) / 1000;
+      unsigned long remaining = (NO_CLIENT_TIMEOUT / 1000) - waited;
+      Serial.printf(" | No clients: %lus (restart: %lus)", waited, remaining);
     }
     
     Serial.println();
@@ -177,9 +160,7 @@ void handleButtonPress() {
     }
 
     if (currentButtonState == HIGH) {
-      if (buttonPressed && !buttonHeld) {
-        toggleRelay();
-      }
+      if (buttonPressed && !buttonHeld) toggleRelay();
       buttonPressed = false;
       buttonHeld = false;
     }
@@ -211,20 +192,15 @@ void toggleRelay() {
   #endif
 
   EEPROM.write(SWITCH_STATE_ADDRESS, newState ? 0x01 : 0x00);
-  if (EEPROM.commit()) {
-    Serial.println("State saved");
-  } else {
-    Serial.println("ERROR: Save failed");
-  }
-
+  EEPROM.commit();
+  
   homekit_characteristic_notify(&cha_switch_on, cha_switch_on.value);
 }
 
 void wipeEEPROM() {
   Serial.println("\n=== FACTORY RESET ===");
-  Serial.println("Hold confirmed - wiping all data...");
   
-  // Flash LED rapidly to indicate factory reset
+  // Flash LED
   for (int i = 0; i < 20; i++) {
     digitalWrite(PIN_LED, LOW);
     delay(100);
@@ -232,24 +208,23 @@ void wipeEEPROM() {
     delay(100);
   }
   
-  Serial.println("Erasing EEPROM...");
+  Serial.println("Wiping EEPROM...");
   
-  // Wipe entire EEPROM (including HomeKit pairing at 0-1408)
+  // Wipe all 4096 bytes
   for (int i = 0; i < 4096; i++) {
-    EEPROM.write(i, 0x00);
+    EEPROM.write(i, 0xFF);  // Use 0xFF for flash erase
     if (i % 512 == 0 && i > 0) {
-      Serial.printf("Progress: %d/4096\n", i);
+      Serial.printf("%d/4096\n", i);
     }
   }
   
   if (EEPROM.commit()) {
-    Serial.println("✅ EEPROM wiped!");
+    Serial.println("✅ Wiped!");
   } else {
-    Serial.println("❌ Commit failed!");
+    Serial.println("❌ Failed!");
   }
   
-  Serial.println("All pairing data cleared");
-  Serial.println("Restarting in 3 seconds...\n");
+  Serial.println("Restarting in 3s...");
   delay(3000);
   ESP.restart();
 }
@@ -273,11 +248,7 @@ void cha_switch_on_setter(const homekit_value_t value) {
   #endif
 
   EEPROM.write(SWITCH_STATE_ADDRESS, on ? 0x01 : 0x00);
-  if (EEPROM.commit()) {
-    Serial.printf("HomeKit: %s\n", on ? "ON" : "OFF");
-  } else {
-    Serial.println("ERROR: Save failed");
-  }
+  EEPROM.commit();
 }
 
 void my_homekit_setup() {
