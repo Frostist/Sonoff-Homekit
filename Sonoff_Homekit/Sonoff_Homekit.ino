@@ -8,10 +8,9 @@
 #define PIN_LED 13
 #define PIN_BUTTON 0
 
-// Hardware version
 #define ESP8285_V1_3 true
 
-// EEPROM configuration - HomeKit uses 0-1408, we use 1409+
+// EEPROM - HomeKit uses 0-1408, we use 1409+
 #define SWITCH_STATE_ADDRESS 1409
 #define EEPROM_MAGIC_ADDRESS 1410
 #define EEPROM_MAGIC_VALUE 0xAB
@@ -53,35 +52,26 @@ void setup() {
   // Connect WiFi
   wifi_connect();
 
-  // Initialize HomeKit FIRST - let it set up its EEPROM storage (0-1408)
+  // Initialize HomeKit FIRST
   Serial.println("Initializing HomeKit...");
   my_homekit_setup();
   Serial.println("HomeKit initialized");
 
-  // Now restore our switch state from EEPROM (1409+)
+  // Restore switch state
   uint8_t magicValue = EEPROM.read(EEPROM_MAGIC_ADDRESS);
   bool eepromInitialized = (magicValue == EEPROM_MAGIC_VALUE);
   
   bool switchOn = false;
   
   if (!eepromInitialized) {
-    Serial.println("First boot - initializing switch state");
+    Serial.println("First boot - init switch state");
     switchOn = false;
     EEPROM.write(SWITCH_STATE_ADDRESS, 0x00);
     EEPROM.write(EEPROM_MAGIC_ADDRESS, EEPROM_MAGIC_VALUE);
     EEPROM.commit();
   } else {
     uint8_t storedState = EEPROM.read(SWITCH_STATE_ADDRESS);
-    if (storedState == 0x01) {
-      switchOn = true;
-    } else if (storedState == 0x00) {
-      switchOn = false;
-    } else {
-      Serial.printf("Warning: Corrupted state 0x%02X\n", storedState);
-      switchOn = false;
-      EEPROM.write(SWITCH_STATE_ADDRESS, 0x00);
-      EEPROM.commit();
-    }
+    switchOn = (storedState == 0x01);
   }
 
   // Set relay
@@ -94,7 +84,7 @@ void setup() {
   Serial.printf("Switch: %s\n", switchOn ? "ON" : "OFF");
   cha_switch_on.value.bool_value = switchOn;
   
-  Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
+  Serial.printf("Heap: %d bytes\n", ESP.getFreeHeap());
   Serial.println("=== Ready ===\n");
 }
 
@@ -119,7 +109,7 @@ void loop() {
         noClientStartTime = currentTime;
       }
       else if (hadClientBefore && (currentTime - noClientStartTime >= NO_CLIENT_TIMEOUT)) {
-        Serial.println("\n⚠️  No clients for 2 min - Restarting");
+        Serial.println("\n⚠️  No clients for 2min - Restarting");
         delay(3000);
         ESP.restart();
       }
@@ -134,12 +124,12 @@ void loop() {
     
     Serial.printf("Heap: %d, Clients: %d", freeHeap, clients);
     
-    if (freeHeap < 8000) Serial.print(" ⚠️ LOW");
+    if (freeHeap < 8000) Serial.print(" ⚠️");
     
     if (hadClientBefore && noClientStartTime > 0 && WiFi.isConnected()) {
       unsigned long waited = (millis() - noClientStartTime) / 1000;
       unsigned long remaining = (NO_CLIENT_TIMEOUT / 1000) - waited;
-      Serial.printf(" | No clients: %lus (restart: %lus)", waited, remaining);
+      Serial.printf(" | Wait: %lus, Restart: %lus", waited, remaining);
     }
     
     Serial.println();
@@ -172,7 +162,7 @@ void handleButtonPress() {
   if (currentButtonState == LOW && buttonPressed && !buttonHeld) {
     if (millis() - buttonHoldStart >= buttonHoldTime) {
       buttonHeld = true;
-      wipeEEPROM();
+      factoryReset();
     }
   }
 }
@@ -197,7 +187,7 @@ void toggleRelay() {
   homekit_characteristic_notify(&cha_switch_on, cha_switch_on.value);
 }
 
-void wipeEEPROM() {
+void factoryReset() {
   Serial.println("\n=== FACTORY RESET ===");
   
   // Flash LED
@@ -208,23 +198,12 @@ void wipeEEPROM() {
     delay(100);
   }
   
-  Serial.println("Wiping EEPROM...");
+  // Use HomeKit's built-in storage reset (much more reliable than manual EEPROM wipe)
+  Serial.println("Clearing HomeKit pairing data...");
+  homekit_storage_reset();
   
-  // Wipe all 4096 bytes
-  for (int i = 0; i < 4096; i++) {
-    EEPROM.write(i, 0xFF);  // Use 0xFF for flash erase
-    if (i % 512 == 0 && i > 0) {
-      Serial.printf("%d/4096\n", i);
-    }
-  }
-  
-  if (EEPROM.commit()) {
-    Serial.println("✅ Wiped!");
-  } else {
-    Serial.println("❌ Failed!");
-  }
-  
-  Serial.println("Restarting in 3s...");
+  Serial.println("✅ Reset complete!");
+  Serial.println("Restarting in 3s...\n");
   delay(3000);
   ESP.restart();
 }
