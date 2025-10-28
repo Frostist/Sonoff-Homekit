@@ -1,19 +1,28 @@
-# Sonoff_Homekit
+# Sonoff HomeKit Switch
 
-A project that you load in the Arduino IDE and load onto a ESP8285/ESP32 Sonoff R2 and it allows you to control it natively.
+A project that you use the Arduino IDE and load onto a ESP8285/ESP32 Sonoff R2 and it allows you to control it natively with Apple HomeKit.
 
 Go back to [Will's Homekit stuff](https://github.com/Frostist/Wills-Homekit-Stuff)
 
-# This is a work in progress, I am hoping to have it finished soon with pictures and videos to help!
+## I am still playing around with a lot of the WiFi & EEPROM code, due to the fact that i have encoutered many issues.
+- Frequent lights toggling randomly
+- If WiFi router reboots, lights disconnect and don't reconnect until rebooted
+- Talk to each other and seem to toggle each other on and off
 
 ## Notes
 - Pin 2 controls a relay that allows for the fan to change states from on to off
-- This is for a on/off state fan
+- This is for a on/off state switch (No dimming)
+
+### How to Program
+1. Take Sonoff Unit apart (find the 4 pins on the board for 3v, ground Tx & Rx
+2. Plug in your USB UART Cable
+3. Have the Ardunio IDE installed
+4. Download [Ardunio HomeKit Library](https://github.com/Mixiaoxiao/Arduino-HomeKit-ESP8266/) and ESP8266 [Board Manager](https://arduino-esp8266.readthedocs.io/en/3.1.2/installing.html)
+5. You might also need [ESP HomeKit Library](https://github.com/maximkulkin/esp-homekit) / [ESP Serial Library](https://github.com/plerup/espsoftwareserial/)
+6. Download this file and then open the .ino file with Ardunio
 
 
-### NB: This project requires the use of the units EMPROM.
-- THis might mean depending on the unit you are using that you might have to change where the data is stored.
-- The reason for this... We have loadshedding and without this addon, my fan would switch off from lack of power and then remain off even if the power comes back on.
+
 
 ## Hardware Version Compatibility
 
