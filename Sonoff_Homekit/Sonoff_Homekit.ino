@@ -13,7 +13,6 @@
 // Set this to false for ESP8285 v1.0 units (normal relay logic)
 // If your switch behavior is inverted, change this setting
 #define ESP8285_V1_3 true
-
 // Increased EEPROM size to accommodate HomeKit pairing data
 #define EEPROM_SIZE 4096
 // Move switch state storage to avoid conflicts with HomeKit library
@@ -42,6 +41,9 @@ const unsigned long heapCheckInterval = 10000;  // Check every 10 seconds
 // access your HomeKit characteristics defined in my_accessory.c
 extern "C" homekit_server_config_t config;
 extern "C" homekit_characteristic_t cha_switch_on;
+
+// Track WiFi state to detect reconnections
+bool previousWifiState = false;
 
 void setup() {
   Serial.begin(115200);
