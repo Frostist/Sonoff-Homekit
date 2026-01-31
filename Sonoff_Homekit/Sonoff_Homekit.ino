@@ -41,7 +41,7 @@ extern "C" homekit_characteristic_t cha_switch_on;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n\n=== Sonoff HomeKit v3.1 ===");
+  Serial.println("\n\n=== Sonoff HomeKit v3.2 ===");
   
   // Initialize pins
   pinMode(PIN_LED, OUTPUT);
@@ -89,7 +89,18 @@ void setup() {
 }
 
 void loop() {
-  wifi_check_and_reconnect();
+  // Check WiFi and capture if reconnection just occurred
+  bool wifiJustReconnected = wifi_check_and_reconnect();
+
+  // FIX: If WiFi just reconnected, restart to re-initialize HomeKit mDNS service
+  // This fixes the bug where switches connect to WiFi after router reboot
+  // but don't re-advertise their HomeKit service via mDNS
+  if (wifiJustReconnected) {
+    Serial.println("\n🔄 WiFi reconnected - Restarting to reinitialize HomeKit mDNS...");
+    delay(2000);
+    ESP.restart();
+  }
+
   my_homekit_loop();
   handleButtonPress();
 
@@ -201,6 +212,9 @@ void factoryReset() {
   // Use HomeKit's built-in storage reset (much more reliable than manual EEPROM wipe)
   Serial.println("Clearing HomeKit pairing data...");
   homekit_storage_reset();
+
+  Serial.println("Erasing WiFi config...");
+  ESP.eraseConfig();
   
   Serial.println("✅ Reset complete!");
   Serial.println("Restarting in 3s...\n");
