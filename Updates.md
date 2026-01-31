@@ -1,8 +1,5 @@
 # Updates
 
-
-
-
 v3.1 - Date: 28 Oct 2025
 - Simplified EEPROM state handling for the switch, reducing edge-case branches.
 - Cleaned up logging labels and output formatting for heap and client monitoring.
