@@ -20,6 +20,7 @@ const unsigned long WIFI_CHECK_INTERVAL = 5000;  // Check connection every 5 sec
 unsigned long lastWifiRetry = 0;
 unsigned long lastWifiCheck = 0;
 bool wifiConnected = false;
+int wifiReconnectFailures = 0;
 
 void wifi_connect() {
 	Serial.println("=== WiFi Connection Starting ===");
@@ -54,6 +55,7 @@ void wifi_connect() {
 		// Turn off LED when WiFi connects
 		digitalWrite(13, HIGH); // Turn off LED (HIGH = off for this LED)
 		wifiConnected = true;
+		wifiReconnectFailures = 0;
 		lastWifiRetry = millis();
 		lastWifiCheck = millis();
 		
@@ -137,6 +139,7 @@ bool wifi_check_and_reconnect() {
 		
 		if (WiFi.isConnected()) {
 			wifiConnected = true;
+			wifiReconnectFailures = 0;
 			digitalWrite(13, HIGH); // Turn off LED
 			
 			Serial.println("WiFi reconnected successfully!");
@@ -148,9 +151,16 @@ bool wifi_check_and_reconnect() {
 		} else {
 			wifiConnected = false;
 			digitalWrite(13, HIGH); // Turn off LED
+			wifiReconnectFailures++;
 			
 			Serial.println("WiFi reconnection failed");
 			Serial.println("Will retry in 60 seconds");
+			
+			if (wifiReconnectFailures >= 2) {
+				Serial.println("Reconnection failed twice - restarting");
+				delay(2000);
+				ESP.restart();
+			}
 			
 			return false;  // Reconnection failed
 		}

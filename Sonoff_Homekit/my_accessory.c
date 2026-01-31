@@ -22,7 +22,7 @@ homekit_accessory_t *accessories[] = {
             HOMEKIT_CHARACTERISTIC(MANUFACTURER, "Wills Homekit"),
             HOMEKIT_CHARACTERISTIC(SERIAL_NUMBER, "Sonoff-Switch-01"),
             HOMEKIT_CHARACTERISTIC(MODEL, "ESP8285"),
-            HOMEKIT_CHARACTERISTIC(FIRMWARE_REVISION, "3.1"),
+            HOMEKIT_CHARACTERISTIC(FIRMWARE_REVISION, "3.2"),
             HOMEKIT_CHARACTERISTIC(IDENTIFY, my_accessory_identify),
             NULL
         }),
